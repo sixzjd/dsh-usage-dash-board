@@ -102,7 +102,7 @@ test/                node:test 套件，无第三方依赖
 ```
 
 ```bash
-npm test     # 11 项
+npm test     # 全部离线，无需依赖
 npm run check
 ```
 

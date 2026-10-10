@@ -66,7 +66,10 @@ test('filters requests and rebuilds totals and groups from selected rows', () =>
   assert.deepEqual(result.days.map(({ date, calls }) => ({ date, calls })), [
     { date: '2026-10-01', calls: 1 },
   ])
-  assert.equal(result.allTime.calls, 1)
+  // allTime describes the whole snapshot, not the selected range: the scope
+  // keeps one request while the snapshot carries three. realTokens falls back to
+  // the scoped total because this partial fixture omits the unfiltered figure.
+  assert.equal(result.allTime.calls, 3)
   assert.equal(result.allTime.realTokens, 10)
 })
 
@@ -94,4 +97,54 @@ test('preserves unknown model unpriced state in request and filtered aggregates'
   assert.equal(result.providers[0].cost.unpriced, 1)
   assert.equal(result.models[0].cost.unpriced, 1)
   assert.equal(result.models[0].priced, false)
+})
+
+test('allTime reports the unfiltered whole history, not the selected range', () => {
+  // Regression: allTime was recomputed from the already-filtered rows, so a
+  // 7-day window reported "all time" as 7 days and a provider filter narrowed
+  // it further. The label contradicted its own name.
+  const snapshot = {
+    calls: 9,
+    realTokens: 900,
+    earliest: Date.parse('2026-09-01T12:00:00Z'),
+    latest: Date.parse('2026-10-09T12:00:00Z'),
+    sessions: 4,
+    requests: [
+      request('s1:1:1', '2026-09-01', 'alpha', 'model-a', 10, '1'),
+      request('s2:1:1', '2026-09-20', 'beta', 'model-b', 20, '2'),
+      request('s3:1:1', '2026-10-09', 'alpha', 'model-a', 30, '3'),
+    ],
+  }
+
+  const narrow = filterSnapshot(snapshot, {
+    start: '2026-10-01', end: '2026-10-31', providers: [], models: [],
+  })
+
+  // The range keeps only one request, but allTime must still describe all nine.
+  assert.equal(narrow.requests.length, 1)
+  assert.equal(narrow.totals.calls, 1)
+  assert.equal(narrow.allTime.calls, 9)
+  assert.equal(narrow.allTime.realTokens, 900)
+  assert.equal(narrow.allTime.sessions, 4)
+  assert.equal(narrow.allTime.earliest, snapshot.earliest)
+  assert.equal(narrow.allTime.latest, snapshot.latest)
+
+  // A provider filter must not shrink allTime either.
+  const filtered = filterSnapshot(snapshot, {
+    start: '2026-09-01', end: '2026-10-31', providers: ['alpha'], models: [],
+  })
+  assert.equal(filtered.totals.calls, 2)
+  assert.equal(filtered.allTime.calls, 9)
+})
+
+test('allTime falls back to scoped rows when the snapshot lacks totals', () => {
+  // Older or partial snapshots may not carry the unfiltered aggregates; the
+  // field must degrade to something honest rather than report undefined.
+  const result = filterSnapshot({
+    requests: [request('s1:1:1', '2026-10-01', 'alpha', 'model-a', 10, '1')],
+  }, { start: '2026-10-01', end: '2026-10-01', providers: [], models: [] })
+
+  assert.equal(result.allTime.calls, 1)
+  assert.equal(result.allTime.sessions, 1)
+  assert.ok(Number.isFinite(result.allTime.earliest))
 })

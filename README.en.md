@@ -94,7 +94,7 @@ test/                node:test suite, no third-party dependencies
 ```
 
 ```bash
-npm test     # 11 tests
+npm test     # runs offline, no dependencies
 npm run check
 ```
 

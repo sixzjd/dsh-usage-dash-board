@@ -1,0 +1,78 @@
+{
+  "name": "npm-usage",
+  "displayName": "用量统计",
+  "version": "0.1.0",
+  "description": "用量统计 for DeepSeek Harness: daily token usage, request count, cache hit rate and estimated cost, shown as a native settings section.",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib",
+    "locale",
+    "cordis.patch.yml",
+    "client.js",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    },
+    "compatibility": {
+      "dsh": ">=0.2.0-rc.2 <0.3.0",
+      "dshReleases": {
+        "0.2.0-rc.2": "compatible"
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "test:watch": "node --test --watch",
+    "check": "node --check client.js && node --check lib/index.js && npm test"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "dsh-bundle",
+    "deepseek-harness",
+    "deepseek",
+    "token-usage",
+    "usage-statistics",
+    "cost-tracking",
+    "cache-hit-rate",
+    "analytics"
+  ],
+  "author": "sixzjd",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sixzjd/npm-usage.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sixzjd/npm-usage/issues"
+  },
+  "homepage": "https://github.com/sixzjd/npm-usage#readme",
+  "engines": {
+    "dsh": ">=0.2.0-rc.2",
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4"
+  }
+}

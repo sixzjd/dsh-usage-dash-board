@@ -108,8 +108,7 @@ route is `Qwen3.8-Flash`. The route key is handed back to the upstream verbatim
 and **cannot** be replaced at the source, so the real name only exists in that
 plugin's own model-discovery cache.
 
-The panel reads that cache and shows the real model name, noting how many route
-keys it resolved.
+The panel reads that cache and shows the real model name.
 
 **Display only.** Grouping, counting, filtering and pricing all keep using the
 route id, so:
@@ -117,9 +116,10 @@ route id, so:
 - labelling never moves a request between rows or changes any figure
 - when two accounts' caches disagree about one route key, that key is **dropped**
   (a route id on screen beats a wrong model name)
-- a missing, unreadable or reshaped cache falls back silently to the route id,
-  and the provenance line under the title disappears — the absent line is itself
-  the signal
+- a missing, unreadable or reshaped cache falls back **silently** to the route
+  id: the UI says nothing, and you simply see keys like `qfmodel`. To check
+  whether resolution is working, read `catalog.aliasCount` in the
+  `GET /api/npm-usage/summary` response — 0 means nothing resolved
 
 ## Seams used
 

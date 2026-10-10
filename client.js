@@ -46,24 +46,6 @@ window.__ModuleLoader__.load({
     const metricLabel = (metric) => metric === "requests" ? "请求" : "Tokens";
     const displayCost = (cost) => (finite(cost?.unpriced) ?? 0) > 0 ? "未完整计价" : money(cost?.total);
     const metricText = (row, metric) => num(metricValue(row, metric));
-    /**
-     * Provenance line for resolved model names.
-     *
-     * Rendered only when at least one alias resolved. The absence of the line
-     * is itself the signal: route ids on screen with no note here means the
-     * catalog was missing or unreadable, rather than that the models have no
-     * real name to show.
-     */
-    const catalogNote = (catalog) => {
-      if (!catalog || !(catalog.aliasCount > 0)) return null
-      const when = Number.isFinite(catalog.refreshedAt) && catalog.refreshedAt > 0
-        ? new Date(catalog.refreshedAt).toLocaleString("zh-CN", { hour12: false })
-        : "未知"
-      const sources = Array.isArray(catalog.sources) ? catalog.sources.join("、") : ""
-      return h("div", { className: "um-scan", title: `来源：${sources || "未知"} · 更新于 ${when}` },
-        `已解析 ${catalog.aliasCount} 个路由别名的真实模型名`)
-    }
-
     /** The host already labelled the row when a route id resolved; never re-derive it. */
     const modelLabel = (row) => (row && (row.displayName || row.modelId)) || "unknown";
     const percentage = (value) => { const number = finite(value); return number === null ? "—" : `${(number * 100).toFixed(1).replace(/\.0$/, "")}%`; };
@@ -280,8 +262,7 @@ window.__ModuleLoader__.load({
       const update = (key, value) => setFilters((f) => ({ ...f, [key]: value })), rows = tab === "providers" ? data?.providers : tab === "models" ? data?.models : data?.requests;
       const table = tab === "requests" ? h("table", { className: "um-table" }, h("thead", null, h("tr", null, h("th", null, "时间"), h("th", null, "供应商"), h("th", null, "模型"), h("th", null, "Tokens"), h("th", null, "费用"))), h("tbody", null, ...(rows || []).slice(0, 100).map((r, i) => h("tr", { key: r.id || i }, h("td", null, r.time ? new Date(r.time).toLocaleString() : r.date || "—"), h("td", null, r.provider || "unknown"), h("td", { title: r.displayName ? String(r.modelId) : undefined }, modelLabel(r)), h("td", null, num(tokens(r))), h("td", null, displayCost(r.cost)))))) : h("table", { className: "um-table" }, h("thead", null, h("tr", null, h("th", null, tab === "providers" ? "供应商" : "模型"), h("th", null, "请求"), h("th", null, "Tokens"), h("th", null, "费用"))), h("tbody", null, ...(rows || []).map((r, i) => h("tr", { key: `${r.modelId || r.provider || i}` }, h("td", { title: r.displayName ? String(r.modelId) : undefined }, tab === "models" ? modelLabel(r) : (r.provider || "unknown")), h("td", null, num(r.calls)), h("td", null, num(r.realTokens ?? tokens(r))), h("td", null, displayCost(r.cost))))));
       const card = (kind, label, value) => h("button", { className: "um-card", type: "button", onClick: () => setDetailKind(kind), "aria-label": `${label}，查看详情` }, h("span", { className: "um-card-label" }, label), h("span", { className: "um-value" }, value));
-      return h("div", { className: "um-root" }, h("style", null, css), h("header", { className: "um-head" }, h("div", null, h("div", { className: "um-title" }, "用量统计"), h("div", { className: "um-muted" }, data?.scope ? `${data.scope.start} 至 ${data.scope.end}` : "模型使用、缓存效率与成本概览"), data?.scan?.done === false ? h("div", { className: "um-scan" }, `正在扫描历史会话 ${data.scan.loaded || 0}/${data.scan.total || 0}`) : null,
-          catalogNote(data?.catalog)), h("div", { className: "um-actions" }, h("button", { className: "um-button", type: "button", onClick: () => void load(false), disabled: state.loading || customDateIncomplete }, state.loading ? "刷新中…" : "刷新"))),
+      return h("div", { className: "um-root" }, h("style", null, css), h("header", { className: "um-head" }, h("div", null, h("div", { className: "um-title" }, "用量统计"), h("div", { className: "um-muted" }, data?.scope ? `${data.scope.start} 至 ${data.scope.end}` : "模型使用、缓存效率与成本概览"), data?.scan?.done === false ? h("div", { className: "um-scan" }, `正在扫描历史会话 ${data.scan.loaded || 0}/${data.scan.total || 0}`) : null), h("div", { className: "um-actions" }, h("button", { className: "um-button", type: "button", onClick: () => void load(false), disabled: state.loading || customDateIncomplete }, state.loading ? "刷新中…" : "刷新"))),
         h("div", { className: "um-content" },
           h("div", { className: "um-filters" }, selectOptions("供应商", providers, filters.provider, (v) => setFilters((f) => ({ ...f, provider: v, model: "" }))), selectOptions("模型", models, filters.model, (v) => update("model", v), modelLabels), h("div", { className: "um-filter" }, h("span", { className: "um-label" }, "时间范围"), h("select", { className: "um-select", value: filters.days === "" ? "custom" : filters.days, onChange: (e) => setFilters((f) => ({ ...f, days: e.target.value === "custom" ? "" : e.target.value, start: e.target.value === "custom" ? f.start : "", end: e.target.value === "custom" ? f.end : "" })) }, h("option", { value: "7" }, "近 7 天"), h("option", { value: "30" }, "近 30 天"), h("option", { value: "90" }, "近 90 天"), h("option", { value: "custom" }, "自定义区间"))), filters.days === "" ? h("div", { className: "um-filter" }, h("span", { className: "um-label" }, "开始"), h("input", { className: "um-input", type: "date", value: filters.start, "aria-invalid": !filters.start || undefined, onChange: (e) => setFilters((f) => ({ ...f, start: e.target.value, days: "" })) })) : null, filters.days === "" ? h("div", { className: "um-filter" }, h("span", { className: "um-label" }, "结束"), h("input", { className: "um-input", type: "date", value: filters.end, "aria-invalid": !filters.end || undefined, onChange: (e) => setFilters((f) => ({ ...f, end: e.target.value, days: "" })) })) : null),
           dateValidation ? h("div", { className: "um-validation", role: "status" }, dateValidation) : null,

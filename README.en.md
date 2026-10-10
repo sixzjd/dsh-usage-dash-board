@@ -88,6 +88,7 @@ client.js            browser half (the settings panel)
 lib/index.js         host half entry
 lib/plugin.js        scan, aggregation scheduling, persistence, HTTP routes
 lib/aggregate.js     event fold and daily / per-model bucketing
+lib/catalog.js       route-key -> display name, read from the upstream cache (fails closed)
 lib/pricing.js       price table and peak-band resolution
 locale/{en,zh}.json  plugin page display name (en.json must exist)
 test/                node:test suite, no third-party dependencies
@@ -98,7 +99,29 @@ npm test     # runs offline, no dependencies
 npm run check
 ```
 
-## Public seams used
+## Model display names
+
+Some providers expose models under opaque **route keys** rather than real model
+names. Qoder does exactly this: the durable log records
+`{provider:"qoder", model:"qfmodel"}`, while the model actually behind that
+route is `Qwen3.8-Flash`. The route key is handed back to the upstream verbatim
+and **cannot** be replaced at the source, so the real name only exists in that
+plugin's own model-discovery cache.
+
+The panel reads that cache and shows the real model name, noting how many route
+keys it resolved.
+
+**Display only.** Grouping, counting, filtering and pricing all keep using the
+route id, so:
+
+- labelling never moves a request between rows or changes any figure
+- when two accounts' caches disagree about one route key, that key is **dropped**
+  (a route id on screen beats a wrong model name)
+- a missing, unreadable or reshaped cache falls back silently to the route id,
+  and the provenance line under the title disappears — the absent line is itself
+  the signal
+
+## Seams used
 
 | Seam | Purpose |
 |---|---|
@@ -109,19 +132,48 @@ npm run check
 | `settings.section` slot | mount the settings section |
 | `Modal` from `@deepseek-ai/dsh-client-ui-primitives` | metric detail dialog (falls back to a self-drawn overlay when absent) |
 
-Only documented public services. No internal implementation details, and no direct reads of `$DSH_HOME/sessions`.
+### One read outside those seams
+
+This plugin does **not** read `$DSH_HOME/sessions` (every session arrives
+through `ctx.sessionQuery`), but to resolve the model names above it does read
+`dsh-qoder-connect`'s own discovery cache:
+
+```
+$DSH_HOME/profiles/*/.dsh-qoder-connect/state/*-catalog.json
+```
+
+That is **another plugin's private file, not a published contract** — the path,
+the JSON shape and the per-account keying can all change with its releases. I
+know this contradicts the earlier "public seams only" claim in this repository,
+and this section is the corrected statement rather than a silent edit. The
+tradeoff: without it the panel can only ever show meaningless route keys.
+
+The read is therefore written to fail closed:
+
+- only files named `*-catalog.json` matching `{version:1, entries:{…models:[…]}}`
+  are accepted; `.qoder-probe.json` and `.qoder-host-heartbeat.json` (which
+  carries a `pid`) in the same directory are excluded
+- the cache is keyed by `pat:<hash>` and **only `{id, name}` is extracted**, so no
+  account identifier can reach a response (a test pins this down)
+- any failure falls back to the route key: no throw, no guessing, no effect on
+  the statistics
+- if upstream reshapes the file, the worst case is names reverting to route keys;
+  the numbers stay correct
 
 ## Security boundaries
 
 - Both routes require **loopback**: the socket peer and the `Host` header must both be loopback, and `Sec-Fetch-Site: cross-site` is rejected, which blocks DNS rebinding.
 - The write route (saving prices) additionally requires a per-process token handed out by `GET /pricing`, which a cross-origin page cannot read.
-- Responses contain usage numbers, model identifiers and session IDs (UUIDs). They do **not** contain prompts, reply bodies, session titles or workspace paths.
+- Responses contain usage numbers, model identifiers and session IDs (UUIDs). They do **not** contain prompts, reply bodies, session titles, workspace paths, or the account identifiers mentioned above.
+- The only file read is the catalog noted above; it is never written, and no other file in that directory is touched.
 
 ## Known limitations
 
 - **Cost is an estimate** from the built-in or manual price table, not a provider invoice. Cache read/write and reasoning follow whichever buckets the upstream reports.
+- **Qoder routes bill in credits, not tokens** — its cache carries a per-model `billing.credits` multiplier such as `x0.5`. Applying a models.dev USD rate to such a route yields an "equivalent API price", **not what you actually paid**, so this plugin resolves names only and never auto-prices a route key.
 - An interrupted upstream request may carry only `assistant/chunk` usage with no final `assistant/message`; the chunk usage is kept. If the upstream reports no usage event at all, tokens cannot be recovered precisely from reply content.
 - Sessions lacking `request/header` / `request/context` show their model as `unknown`; the plugin never infers a model from a provider name.
+- Model display names depend on `dsh-qoder-connect`'s private cache format (see above) and need following if it changes.
 - The panel body is Chinese-only; only the settings nav label is localized.
 - Every session the host lists is counted, not just registered workspaces.
 

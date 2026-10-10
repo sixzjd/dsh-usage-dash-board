@@ -51,33 +51,6 @@ test('filters requests and rebuilds totals and groups from selected rows', () =>
     providers: ['alpha'],
     models: [],
   })
-
-  test('rebuilds priced daily cost when filtering requests', () => {
-    const result = filterSnapshot({
-      requests: [request('s1:1:1', '2026-10-01', 'alpha', 'model-a', 10, '1.25')],
-    }, { start: '2026-10-01', end: '2026-10-01', providers: [], models: [] })
-
-    assert.equal(result.days[0].cost.total, '1.25')
-    assert.equal(result.totals.cost.total, '1.25')
-  })
-
-  test('preserves unknown model unpriced state in request and filtered aggregates', () => {
-    const aggregator = createAggregator()
-    aggregator.loadSession('session-unknown', [
-      { type: 'request/context', time: 0, data: { provider: 'mystery', model: 'not-priced' } },
-      { type: 'assistant/message', time: 0, data: { turn: 1, step: 1, usage: { inputTokens: 4 } } },
-    ])
-    const result = filterSnapshot(aggregator.snapshot(), {
-      start: '1970-01-01', end: '1970-01-01', providers: [], models: [],
-    })
-
-    assert.equal(result.requests[0].cost.unpriced, 1)
-    assert.equal(result.totals.cost.unpriced, 1)
-    assert.equal(result.providers[0].cost.unpriced, 1)
-    assert.equal(result.models[0].cost.unpriced, 1)
-    assert.equal(result.models[0].priced, false)
-  })
-
   assert.equal(result.requests.length, 1)
   assert.equal(result.totals.calls, 1)
   assert.equal(result.totals.sessions, 1)
@@ -95,4 +68,30 @@ test('filters requests and rebuilds totals and groups from selected rows', () =>
   ])
   assert.equal(result.allTime.calls, 1)
   assert.equal(result.allTime.realTokens, 10)
+})
+
+test('rebuilds priced daily cost when filtering requests', () => {
+  const result = filterSnapshot({
+    requests: [request('s1:1:1', '2026-10-01', 'alpha', 'model-a', 10, '1.25')],
+  }, { start: '2026-10-01', end: '2026-10-01', providers: [], models: [] })
+
+  assert.equal(result.days[0].cost.total, '1.25')
+  assert.equal(result.totals.cost.total, '1.25')
+})
+
+test('preserves unknown model unpriced state in request and filtered aggregates', () => {
+  const aggregator = createAggregator()
+  aggregator.loadSession('session-unknown', [
+    { type: 'request/context', time: 0, data: { provider: 'mystery', model: 'not-priced' } },
+    { type: 'assistant/message', time: 0, data: { turn: 1, step: 1, usage: { inputTokens: 4 } } },
+  ])
+  const result = filterSnapshot(aggregator.snapshot(), {
+    start: '1970-01-01', end: '1970-01-01', providers: [], models: [],
+  })
+
+  assert.equal(result.requests[0].cost.unpriced, 1)
+  assert.equal(result.totals.cost.unpriced, 1)
+  assert.equal(result.providers[0].cost.unpriced, 1)
+  assert.equal(result.models[0].cost.unpriced, 1)
+  assert.equal(result.models[0].priced, false)
 })

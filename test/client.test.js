@@ -68,3 +68,16 @@ test('axis ticks never collide and always label the final day', async () => {
     }
   }
 })
+
+// The models table groups by provider + route id on purpose, so one model
+// reached over two routes is two rows. Rendering only the model name made that
+// pair look like a duplicated entry, so the route has to be shown alongside it.
+test('model rows name the route so same-model rows stay distinguishable', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(
+    source,
+    /tab === "models"[\s\S]{0,260}className: "um-cell-sub"[\s\S]{0,60}r\.provider/,
+    'the model cell must render the provider as a secondary label',
+  )
+  assert.match(source, /\.um-cell-sub\{/, 'the secondary label needs a style rule')
+})

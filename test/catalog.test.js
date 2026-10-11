@@ -94,10 +94,17 @@ test('a fresher fetch wins over a stale label', () => {
   assert.equal(map.get('qmodel'), 'Qwen4-Plus')
 })
 
-test('a name identical to the route id contributes nothing', () => {
-  const map = buildAliasMap([[model('auto', 'Auto', 1)], [model('plain', 'plain', 1)]])
+test('a name that adds nothing over the route id is dropped', () => {
+  const map = buildAliasMap([
+    [model('plain', 'plain', 1)],
+    // Qoder's real `auto -> Auto`: differs only in capitalisation, so
+    // relabelling it hides a key that was already readable.
+    [model('auto', 'Auto', 1)],
+    [model('qfmodel', 'Qwen3.8-Flash', 1)],
+  ])
   assert.equal(map.has('plain'), false)
-  assert.equal(map.get('auto'), 'Auto')
+  assert.equal(map.has('auto'), false)
+  assert.equal(map.get('qfmodel'), 'Qwen3.8-Flash', 'a real name still resolves')
 })
 
 test('oversized or non-string fields are skipped without failing the file', () => {
@@ -121,10 +128,13 @@ test('oversized or non-string fields are skipped without failing the file', () =
   assert.deepEqual(rows.map((r) => r.id), ['good'])
 })
 
-test('a namespaced route id also resolves on its trailing segment', () => {
+test('resolution is exact and case-insensitive, never on a trailing segment', () => {
   const resolve = createAliasResolver(buildAliasMap([[model('qfmodel', 'Qwen3.8-Flash', 1)]]))
-  assert.equal(resolve.resolve('vendor/qfmodel'), 'Qwen3.8-Flash')
-  assert.equal(resolve.resolve('  qfmodel  '), 'Qwen3.8-Flash')
+  assert.equal(resolve.resolve('  qfmodel  '), 'Qwen3.8-Flash', 'surrounding space is trimmed')
+  assert.equal(resolve.resolve('QFModel'), 'Qwen3.8-Flash', 'case does not have to match')
+  // The catalog carries no provider field, so a namespaced id from a different
+  // vendor would borrow a Qoder name. A missing label beats a wrong one.
+  assert.equal(resolve.resolve('vendor/qfmodel'), null, 'a foreign namespace must not borrow')
 })
 
 test('$DSH_HOME overrides, and a blank value never resolves to the cwd', () => {

@@ -110,6 +110,18 @@ plugin's own model-discovery cache.
 
 The panel reads that cache and shows the real model name.
 
+Only models whose logged modelId **is itself an alias** need this step. Most providers
+return real model names (`openai/gpt-oss-120b`, `minimaxai/minimax-m3`,
+`deepseek-v4-flash-free`, …); the alias table has no entry for them, the panel shows
+those verbatim, and no other plugin is required. Someone without the qoder plugin will
+never see `qfmodel`, because that route key cannot appear in their logs — resolving
+fewer aliases changes nothing on screen.
+
+Matching is **exact on the whole id** (case-insensitive); it does not match the trailing
+segment after a namespace. The alias cache carries no provider field, so letting
+`vendor/dmodel` hit Qoder's `dmodel` would label another vendor's model with a Qoder
+name — a wrong label on screen is worse than no label.
+
 **Display only.** Grouping, counting, filtering and pricing all keep using the
 route id, so:
 

@@ -1,9 +1,9 @@
 window.__ModuleLoader__.load({
-  id: "npm-usage",
+  id: "dsh-usage-dash-board",
   factory: (require) => {
     const React = require("react");
-    const SUMMARY_PATH = "/api/npm-usage/summary";
-    const PRICING_PATH = "/api/npm-usage/pricing";
+    const SUMMARY_PATH = "/api/dsh-usage-dash-board/summary";
+    const PRICING_PATH = "/api/dsh-usage-dash-board/pricing";
     const h = React.createElement;
     // Native dialog chrome. The host's Modal portals to <body>, centres in the
     // VIEWPORT, and owns the mask, Escape, the close button and focus return —
@@ -259,7 +259,7 @@ window.__ModuleLoader__.load({
       const modelLabels = Object.fromEntries((data?.models || [])
         .filter((x) => x.displayName && x.modelId)
         .map((x) => [x.modelId, x.displayName]))
-      const savePrices = async () => { setState((s) => ({ ...s, saving: true, error: null })); try { const response = await fetch(PRICING_PATH, { method: "POST", headers: { "content-type": "application/json", "x-npm-usage-token": state.priceToken }, body: JSON.stringify({ prices: state.prices }) }); if (!response.ok) throw new Error("价格配置保存失败"); await load(true); setState((s) => ({ ...s, saving: false })); } catch (error) { setState((s) => ({ ...s, saving: false, error: error instanceof Error ? error.message : "保存失败" })); } };
+      const savePrices = async () => { setState((s) => ({ ...s, saving: true, error: null })); try { const response = await fetch(PRICING_PATH, { method: "POST", headers: { "content-type": "application/json", "x-dsh-usage-dash-board-token": state.priceToken }, body: JSON.stringify({ prices: state.prices }) }); if (!response.ok) throw new Error("价格配置保存失败"); await load(true); setState((s) => ({ ...s, saving: false })); } catch (error) { setState((s) => ({ ...s, saving: false, error: error instanceof Error ? error.message : "保存失败" })); } };
       const update = (key, value) => setFilters((f) => ({ ...f, [key]: value })), rows = tab === "providers" ? data?.providers : tab === "models" ? data?.models : data?.requests;
       const table = tab === "requests" ? h("table", { className: "um-table" }, h("thead", null, h("tr", null, h("th", null, "时间"), h("th", null, "供应商"), h("th", null, "模型"), h("th", null, "Tokens"), h("th", null, "费用"))), h("tbody", null, ...(rows || []).slice(0, 100).map((r, i) => h("tr", { key: r.id || i }, h("td", null, r.time ? new Date(r.time).toLocaleString() : r.date || "—"), h("td", null, r.provider || "unknown"), h("td", { title: r.displayName ? String(r.modelId) : undefined }, modelLabel(r)), h("td", null, num(tokens(r))), h("td", null, displayCost(r.cost)))))) : h("table", { className: "um-table" }, h("thead", null, h("tr", null, h("th", null, tab === "providers" ? "供应商" : "模型"), h("th", null, "请求"), h("th", null, "Tokens"), h("th", null, "费用"))), h("tbody", null, ...(rows || []).map((r, i) => h("tr", { key: `${r.modelId || r.provider || i}` }, h("td", { title: r.displayName ? String(r.modelId) : undefined }, tab === "models"
             // Same model over two routes is two deliberate rows; name them
@@ -279,7 +279,7 @@ window.__ModuleLoader__.load({
           detailKind ? h(Detail, { kind: detailKind, totals, scope: data?.scope, onClose: () => setDetailKind(null) }) : null)));
     }
     const inject = ["slots"];
-    function apply(ctx) { ctx.slots.inject("settings.section", () => ctx.slots.register({ name: "settings.section", id: "npm-usage", order: 65, label: () => (typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "") ? "用量统计" : "Usage Statistics"), inject: () => ({}) }, UsageMeterSection)); }
+    function apply(ctx) { ctx.slots.inject("settings.section", () => ctx.slots.register({ name: "settings.section", id: "dsh-usage-dash-board", order: 65, label: () => (typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "") ? "用量统计" : "Usage Statistics"), inject: () => ({}) }, UsageMeterSection)); }
     return { inject, apply };
   },
 });

@@ -1,4 +1,4 @@
-# npm-usage
+# dsh-usage-dash-board
 
 A local usage-analytics plugin for DeepSeek Harness: **Settings → Usage Statistics** shows token consumption, request count, cache hit rate and a daily trend.
 
@@ -26,7 +26,7 @@ durable session log
       │  bucket by local calendar day
       ▼
   daily / per-model aggregates + price-table costing
-      │  GET /api/npm-usage/summary
+      │  GET /api/dsh-usage-dash-board/summary
       ▼
   native settings section (settings.section slot)
 ```
@@ -61,10 +61,10 @@ The X axis is filled with **every calendar day** in range, so idle days render a
 ## Install
 
 ```bash
-dsh plugin --profile web add github:sixzjd/npm-usage
+dsh plugin --profile web add github:sixzjd/dsh-usage-dash-board
 ```
 
-Not yet published to npm; once it is, `dsh plugin --profile web add npm-usage` also works.
+Not yet published to npm; once it is, `dsh plugin --profile web add dsh-usage-dash-board` also works.
 
 Refresh the page after installing. The entry mounts into the settings page's `settings.section` slot.
 
@@ -131,7 +131,7 @@ route id, so:
 - a missing, unreadable or reshaped cache falls back **silently** to the route
   id: the UI says nothing, and you simply see keys like `qfmodel`. To check
   whether resolution is working, read `catalog.aliasCount` in the
-  `GET /api/npm-usage/summary` response — 0 means nothing resolved
+  `GET /api/dsh-usage-dash-board/summary` response — 0 means nothing resolved
 
 ## Seams used
 
@@ -139,7 +139,7 @@ route id, so:
 |---|---|
 | `ctx.sessionQuery` | list sessions, read decoded event streams |
 | `ctx.storage` (json backend, kv) | persist the price table under `$DSH_HOME/storages` |
-| `ctx.webServer` | register `/api/npm-usage/*` |
+| `ctx.webServer` | register `/api/dsh-usage-dash-board/*` |
 | `ctx.timer` | periodic reconcile and live debouncing |
 | `settings.section` slot | mount the settings section |
 | `Modal` from `@deepseek-ai/dsh-client-ui-primitives` | metric detail dialog (falls back to a self-drawn overlay when absent) |

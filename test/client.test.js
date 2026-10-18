@@ -81,3 +81,18 @@ test('model rows name the route so same-model rows stay distinguishable', async 
   )
   assert.match(source, /\.um-cell-sub\{/, 'the secondary label needs a style rule')
 })
+
+// A 5-digit 万 value ("5148.5万") is ~95px at 23px, and the card's content box
+// at the default three-column width is ~91px with the old 32px padding. With
+// overflow-wrap:anywhere the unit character wrapped to a second line inside a
+// fixed 83px card, spilling out of the border. The value must never wrap:
+// nowrap keeps it on one line, the tighter padding makes ellipsis a
+// never-needed fallback, and the detail modal (which owns full precision)
+// gets the same guarantee.
+test('metric values stay on one line at narrow card widths', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(source, /\.um-value\{[^}]*white-space:nowrap/, 'card value must not wrap')
+  assert.doesNotMatch(source, /\.um-value\{[^}]*overflow-wrap:anywhere/, 'no anywhere-wrapping on the card value')
+  assert.match(source, /\.um-detail-value\{[^}]*white-space:nowrap/, 'modal value must not wrap either')
+  assert.match(source, /\.um-card\{[^}]*padding:20px 24px/, 'card padding widened the content box')
+})

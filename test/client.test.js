@@ -74,9 +74,12 @@ test('axis ticks never collide and always label the final day', async () => {
 // pair look like a duplicated entry, so the route has to be shown alongside it.
 test('model rows name the route so same-model rows stay distinguishable', async () => {
   const source = await readFile(clientPath, 'utf8')
+  // The window is generous on purpose: the cell also carries a hover title and
+  // the clipped-name span, so proximity is a weaker signal than the exact
+  // render call, which is what is asserted.
   assert.match(
     source,
-    /tab === "models"[\s\S]{0,260}className: "um-cell-sub"[\s\S]{0,60}r\.provider/,
+    /tab === "models"[\s\S]{0,520}?h\("span", \{ className: "um-cell-sub" \}, r\.provider\)/,
     'the model cell must render the provider as a secondary label',
   )
   assert.match(source, /\.um-cell-sub\{/, 'the secondary label needs a style rule')
@@ -129,4 +132,88 @@ test('request log sorts by time and defaults to newest first', async () => {
   assert.match(source, /aria-sort/, 'sort direction must be announced to AT')
   assert.doesNotMatch(source, /rows \|\| \[\]\)\.slice\(0, 100\)/,
     'an unsorted leading slice showed stale history only')
+})
+
+// The 费用 column rendered OUTSIDE the panel border. Cause: `.um-table` is a
+// real table, the cells are nowrap, and a table can never be narrower than its
+// min-content width - so `width:100%` was a floor, not a cap. The scroll
+// container meant to contain it had been written as a rule on `.um-table`
+// itself and parked inside the <=760px media query, so only mobile ever
+// clipped. Two independent things must hold now: the wrapper exists at every
+// width, and every ancestor of it may shrink (a flex/grid item defaults to
+// min-width:auto, so it would rather widen the whole settings pane than let
+// the table scroll inside itself).
+test('detail tables are clamped inside their panel at every width', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  const mobile = source.slice(
+    source.indexOf('@media(max-width:760px)'),
+    source.indexOf('@media(max-width:480px)'),
+  )
+  assert.match(source, /\.um-table-wrap\{[^}]*overflow-x:auto/,
+    'the horizontal scroll container must be a wrapper element')
+  assert.doesNotMatch(mobile, /um-table-wrap/,
+    'the scroll container must not be mobile-only - that was the bug')
+  assert.doesNotMatch(mobile, /\.um-table\{[^}]*overflow/,
+    'the table itself must never carry the scroll rule')
+  assert.match(source, /\.um-root\{[^}]*margin:0 auto;min-width:0\}/,
+    'the root must be allowed to shrink inside the settings pane')
+  assert.match(source, /\.um-content\{position:relative;min-width:0\}/,
+    'the content column must be allowed to shrink')
+  assert.match(source, /\.um-panel\{padding:16px;margin-bottom:16px;min-width:0\}/,
+    'the panel must be allowed to shrink')
+  assert.match(source, /rows\?\.length \? h\("div", \{ className: "um-table-wrap" \}, table\)/,
+    'both detail tables must render inside the wrapper')
+})
+
+// Containment alone would only have HIDDEN the 费用 column behind a scrollbar.
+// Measured min-content of the request table was ~566px against a ~507px panel
+// content box: 5 columns of 8px gutters plus a one-line "2026/10/18 22:46:14"
+// stamp. These are the four changes that brought it to ~474px so it fits
+// without scrolling, with 费用 fully readable.
+test('the request table is narrow enough to fit a settings pane', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(source, /\.um-table th\{padding:0 6px 9px/, 'header gutter trimmed')
+  assert.match(source, /\.um-table td\{padding:10px 6px/, 'cell gutter trimmed')
+  assert.match(source, /\.um-table th:first-child,\.um-table td:first-child\{padding-left:0\}/,
+    'the panel already supplies the outer inset')
+  assert.match(source, /\.um-table th:last-child,\.um-table td:last-child\{padding-right:0\}/,
+    'the panel already supplies the outer inset')
+  assert.match(source, /\.um-num\{text-align:right;font-variant-numeric:tabular-nums\}/,
+    'numeric columns align like a ledger and keep digits on a common grid')
+  assert.match(source, /const stampParts = \(atMs\) =>/, 'the timestamp must be splittable')
+  assert.match(source, /timeCell\(r\)/, 'the request log must use the stacked date/clock cell')
+  assert.doesNotMatch(source, /new Date\(r\.time\)\.toLocaleString\(\)/,
+    'the one-line stamp was the single widest cell in the table')
+  assert.match(source, /h\("td", \{ className: "um-num" \}, displayCost\(r\.cost\)\)/,
+    '费用 is a numeric column')
+})
+
+// The provider and model names are the only unbounded-width cells in the
+// table, and on a wide panel they spread the whole grid out. Clipping has to
+// happen in CSS, never by shortening the string in JS: the DOM keeps the full
+// name so the cell's accessible name stays complete, and `title` gives the
+// mouse the same full text.
+test('long provider and model names clip visually but keep the full value', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(source, /\.um-ellip\{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\}/,
+    'the clip box needs ellipsis, not hidden')
+  // A span max-width alone does NOT cap a column: under table-layout:auto the
+  // browser hands the panel's leftover width back to the columns, so the column
+  // stays wide while its text is clipped inside it. Fixed layout pins it, and
+  // the one unsized column absorbs the slack.
+  assert.match(source, /\.um-table\{[^}]*table-layout:fixed\}/,
+    'column widths are only honoured under fixed layout')
+  assert.match(source, /h\("colgroup", null, h\("col", \{ style: \{ width: "96px" \} \}\), h\("col", \{ style: \{ width: "88px" \} \}\), h\("col"\)/,
+    'the name columns are capped and the model column takes the slack')
+  assert.match(source, /h\("td", \{ title: r\.provider \|\| "unknown" \}/,
+    'the provider cell needs a hover title')
+  assert.match(source, /h\("td", \{ title: fullModelName\(r\) \}/,
+    'the model cell needs a hover title')
+  // The full text stays in the DOM; only the box clips.
+  assert.match(source, /h\("span", \{ className: "um-ellip" \}, modelLabel\(r\)\)/,
+    'the model name must be rendered in full and clipped by CSS')
+  assert.match(source, /const fullModelName = \(row\) =>/,
+    'hover text must be derived, not re-truncated')
+  assert.match(source, /return id && id !== label \? `\$\{label\}（\$\{id\}）` : label;/,
+    'hover text carries the route id when it differs from the shown name')
 })

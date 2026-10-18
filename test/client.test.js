@@ -98,3 +98,29 @@ test("metric values stay fully visible at narrow card widths", async () => {
   assert.doesNotMatch(source, /\.um-detail-value\{[^}]*overflow/, "modal value must not hide overflow")
   assert.match(source, /\.um-card\{[^}]*padding:20px 24px/, "card padding widened the content box")
 })
+
+// Two bugs shared one root: the grouped tables keyed rows on modelId OR
+// provider, so the two qfmodel routes (qoder, qoder-global) collided on the
+// same React key. Undefined diff behaviour then let a stale models-table row
+// (4 cells: name+route / calls / tokens / cost) survive into the requests
+// table (5 cells) when switching tabs - the "time column shows a model"
+// screenshot. Keys must carry both dimensions.
+test('grouped rows key on provider AND model, never one or the other', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(source, /h\("tr", \{ key: `\$\{r\.provider[^\n]*r\.modelId/,
+    'grouped table key must join provider and modelId')
+  assert.doesNotMatch(source, /key: `\$\{r\.modelId \|\| r\.provider/,
+    'the || key form let two routes collide')
+})
+
+// The requests array arrives oldest-first; slice(0, 100) therefore showed the
+// 100 OLDEST requests of the range and silently hid everything recent - a
+// user's fresh deepseek calls existed in the data but could never appear.
+// Newest-first (last 100, reversed) is what a request log means.
+test('request log shows the newest requests, not the oldest', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(source, /\.slice\(-100\)\.reverse\(\)\.map/,
+    'requests table must take the trailing 100 and reverse them')
+  assert.doesNotMatch(source, /rows \|\| \[\]\)\.slice\(0, 100\)/,
+    'leading slice showed stale history only')
+})

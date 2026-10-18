@@ -117,10 +117,16 @@ test('grouped rows key on provider AND model, never one or the other', async () 
 // 100 OLDEST requests of the range and silently hid everything recent - a
 // user's fresh deepseek calls existed in the data but could never appear.
 // Newest-first (last 100, reversed) is what a request log means.
-test('request log shows the newest requests, not the oldest', async () => {
+test('request log sorts by time and defaults to newest first', async () => {
   const source = await readFile(clientPath, 'utf8')
-  assert.match(source, /\.slice\(-100\)\.reverse\(\)\.map/,
-    'requests table must take the trailing 100 and reverse them')
+  // Sort-then-slice, not slice-then-reverse: the visible window follows the
+  // chosen direction instead of hard-coding one.
+  assert.match(source, /sortRows\(rows, \(r\) => r\.time \?\? 0\)\.slice\(0, 100\)/,
+    'requests must sort by time before capping to 100 rows')
+  assert.match(source, /\[sortDesc, setSortDesc\] = React\.useState\(true\)/,
+    'default direction must be newest/largest first')
+  assert.match(source, /sortTh\("时间"/, 'the time header must be the sort control')
+  assert.match(source, /aria-sort/, 'sort direction must be announced to AT')
   assert.doesNotMatch(source, /rows \|\| \[\]\)\.slice\(0, 100\)/,
-    'leading slice showed stale history only')
+    'an unsorted leading slice showed stale history only')
 })

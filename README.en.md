@@ -60,6 +60,8 @@ The X axis is filled with **every calendar day** in range, so idle days render a
 
 **All time** starts at the oldest record actually on disk, not at a fixed day count; with no records at all it degrades to Today but stays daily, so an empty history is never drawn as 24 hourly bars.
 
+The header stamps **when the numbers were captured** (`· 数据更新于 15:27:45`). A single response is always internally consistent — a provider's request count equals the sum of its models' — so two tables disagreeing can only mean usage grew between two fetches. The panel does not auto-refresh: numbers change when you change a filter or press refresh, and the stamp says which fetch you are looking at.
+
 ## Install
 
 ```bash

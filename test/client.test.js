@@ -289,3 +289,26 @@ test('hourly ticks stay legible and keep the final hour', async () => {
       `hours ${ticks[i - 1]}/${ticks[i]} would overlap`)
   }
 })
+
+// A number cannot be checked against anything if the reader cannot tell when it
+// was taken. Two tables in the same panel never disagree — both are rendered
+// from one response — but a panel that refetched between two glances will show
+// two different snapshots, and without a timestamp that reads as a bug.
+test('the panel stamps when its numbers were captured', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  const lines = source.split('\n')
+  const pad2 = lines.find((line) => line.startsWith('    const pad2 = '))
+  const clock = lines.find((line) => line.startsWith('    const clock = '))
+  assert.ok(pad2 && clock, 'the clock helpers are present')
+  const stamp = new Function(`${pad2}\n${clock}\nreturn clock`)()
+  assert.equal(stamp(new Date(2026, 9, 19, 9, 5, 7).getTime()), '09:05:07', 'zero-padded HH:MM:SS')
+
+  assert.match(source, /className: "um-stamp"/, 'the header carries a stamp element')
+  assert.match(source, /` · 数据更新于 \$\{stampParts\(data\.generatedAt\)\.time\}`/,
+    'the stamp shows the payload capture time, not the render time')
+  assert.match(source, /data\?\.generatedAt \?/,
+    'no payload means no stamp, rather than a fabricated "now"')
+  // A panel left open across midnight needs the day, which the tooltip holds.
+  assert.match(source, /title: `抓取于 \$\{stampParts\(data\.generatedAt\)\.date\} \$\{stampParts\(data\.generatedAt\)\.time\}`/)
+  assert.match(source, /\.um-stamp\{white-space:nowrap/, 'the stamp must not wrap mid-string')
+})

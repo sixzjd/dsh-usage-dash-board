@@ -50,13 +50,15 @@ Token buckets follow the host's documented **DISJOINT** semantics (`@deepseek-ai
 | Area | Content |
 |---|---|
 | Three summary cards | Tokens consumed / Requests / Cache hit rate; click to expand that metric's breakdown |
-| Trend | Daily bar chart, switchable between Tokens and Requests; values appear on hover or keyboard focus only |
-| Filters | Provider, model, range (7 / 30 / 90 days, custom start–end) |
+| Trend | Bar chart, switchable between Tokens and Requests; values appear on hover or keyboard focus only. Daily by default; **Today** (or a custom range whose start and end are the same day) switches it to **hourly** |
+| Filters | Provider, model, range (Today / 7 / 30 / 90 days / All time / custom start–end), opening on the last 30 days |
 | Request log | Per-call time, provider, model, tokens, cost |
 | Providers / Models | Grouped totals and shares |
 | Pricing | Editable price table, USD per million tokens across four buckets |
 
-The X axis is filled with **every calendar day** in range, so idle days render as zero rather than being skipped — otherwise "two idle weeks then one burst" would read as "steady low usage with a spike".
+The X axis is filled with **every calendar day** in range, so idle days render as zero rather than being skipped — otherwise "two idle weeks then one burst" would read as "steady low usage with a spike". The hourly view works the same way: all 24 slots are present, so a quiet 3 a.m. keeps its place.
+
+**All time** starts at the oldest record actually on disk, not at a fixed day count; with no records at all it degrades to Today but stays daily, so an empty history is never drawn as 24 hourly bars.
 
 ## Install
 

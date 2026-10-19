@@ -110,8 +110,11 @@ window.__ModuleLoader__.load({
     /**
      * Indices that carry an axis label. Every Nth slot so a 30/90-day range stays
      * legible instead of printing every date, with the final day always labelled.
+     *
+     * `hourly` series are 24 slots of "HH:00" — the same width as "MM/DD" — so
+     * they get their own cadence instead of borrowing the 2-day one.
      */
-    const tickIndexes = (length, barWidth = 16, barGap = 2) => {
+    const tickIndexes = (length, barWidth = 16, barGap = 2, hourly = false) => {
       if (length === 0) return new Set()
       // Labels are ~34px wide ("2026-09-11" renders as MM/DD), so the cadence
       // must be derived from the slot PITCH, not from a fixed day count: a
@@ -120,19 +123,21 @@ window.__ModuleLoader__.load({
       // sparse enough to read, dense enough to orient. Only widened when the
       // actual slot pitch would put two ~34px labels on a collision course —
       // which happens on short ranges, where slots are at their widest.
-      const base = length <= 14 ? 2 : length <= 45 ? 7 : 14
+      const base = hourly ? 6 : length <= 14 ? 2 : length <= 45 ? 7 : 14
       const pitch = Math.max(1, barWidth + barGap)
       const every = Math.max(base, Math.ceil(44 / pitch))
       const ticks = []
       for (let i = 0; i < length; i += every) ticks.push(i)
-      // The final day is always labelled, but as a REPLACEMENT rather than an
+      // The final slot is always labelled, but as a REPLACEMENT rather than an
       // addition: appending it unconditionally put 10/09 and 10/10 side by side
-      // whenever the regular cadence already landed next to the end.
+      // whenever the regular cadence already landed next to the end. It only
+      // gives way when the pair really would collide, so 24 hourly slots keep
+      // their 18:00 label and still get 23:00.
       const last = length - 1
       if (ticks[ticks.length - 1] === last) return new Set(ticks)
-      if (last - ticks[ticks.length - 1] < every) ticks.pop()
-      if (ticks.length === 0 || last - ticks[ticks.length - 1] >= every) ticks.push(last)
-      else ticks[ticks.length - 1] = last
+      const gap = last - ticks[ticks.length - 1]
+      if (gap < every * 2 / 3) ticks.pop()
+      ticks.push(last)
       return new Set(ticks)
     }
     /**
@@ -148,11 +153,19 @@ window.__ModuleLoader__.load({
      *
      * Values appear on hover/focus only, so the plot stays readable at 90 days.
      */
-    function Chart({ days, metric, scope }) {
+    function Chart({ days, hours, granularity, metric, scope }) {
       // null = nothing hovered; a number = that bar's index. Clicking a bar
       // pins its tip so keyboard and touch users can read it without hovering.
       const [hover, setHover] = React.useState(null);
+      // A single-day scope arrives with 24 hourly buckets, so "今天" plots per
+      // hour instead of showing one lone bar. The server owns the bucket shape
+      // and the labels; the chart only has to know which series it got.
+      const hourly = granularity === "hour" && Array.isArray(hours) && hours.length > 0;
       const series = React.useMemo(() => {
+        if (hourly) return hours.map((row) => {
+          const label = row.label || `${String(row.hour).padStart(2, "0")}:00`
+          return { key: `h${row.hour}`, label, title: `${row.date} ${label}`, row }
+        })
         const byDate = new Map((Array.isArray(days) ? days : []).map((row) => [row.date, row]))
         const filled = []
         const from = finiteDate(scope?.start), to = finiteDate(scope?.end)
@@ -165,15 +178,15 @@ window.__ModuleLoader__.load({
         } else {
           for (const row of Array.isArray(days) ? days : []) filled.push({ date: row.date, row })
         }
-        return filled
-      }, [days, scope?.start, scope?.end])
+        return filled.map((point) => ({ key: point.date, label: monthDay(point.date), title: point.date, row: point.row }))
+      }, [days, hours, hourly, scope?.start, scope?.end])
       const values = series.map((point) => (point.row ? metricValue(point.row, metric) : 0))
       // Bars scale against the rounded ceiling, so a bar top always lines up
       // with a gridline rather than ending just below it.
       const max = niceMax(Math.max(...values, 0))
       const barWidth = series.length > 60 ? 6 : series.length > 30 ? 10 : 16
       const barGap = series.length > 120 ? 1 : 2
-      const tickSet = React.useMemo(() => tickIndexes(series.length, barWidth, barGap), [series.length, barWidth, barGap])
+      const tickSet = React.useMemo(() => tickIndexes(series.length, barWidth, barGap, hourly), [series.length, barWidth, barGap, hourly])
       const tickList = [...tickSet].sort((a, b) => a - b)
       const firstTick = tickList[0] ?? -1
       const lastTick = tickList[tickList.length - 1] ?? -1
@@ -197,11 +210,11 @@ window.__ModuleLoader__.load({
             // first and last few anchor to the inner side instead.
             const align = index < 2 ? " um-tip-start" : index > series.length - 3 ? " um-tip-end" : ""
             return h("button", {
-              key: point.date,
+              key: point.key,
               type: "button",
               className: "um-bar-slot" + (on ? " um-on" : ""),
               "data-index": index,
-              "aria-label": `${point.date}：${num(value)} ${metricLabel(metric)}`,
+              "aria-label": `${point.title}：${num(value)} ${metricLabel(metric)}`,
               onMouseEnter: () => setHover(index),
               onFocus: () => setHover(index),
               onBlur: (event) => {
@@ -211,7 +224,7 @@ window.__ModuleLoader__.load({
               onClick: () => setHover(on ? null : index),
             }, h("span", { className: "um-bar", style: { height: height + "%" } }),
               on ? h("span", { className: "um-bars-tip" + align, role: "status" },
-                h("span", { className: "um-bars-tip-date" }, point.date),
+                h("span", { className: "um-bars-tip-date" }, point.title),
                 h("span", { className: "um-bars-tip-row" },
                   h("span", { className: "um-bars-tip-dot" }),
                   h("span", { className: "um-bars-tip-label" }, metricLabel(metric)),
@@ -220,13 +233,13 @@ window.__ModuleLoader__.load({
         ),
         h("div", { className: "um-bars-x", "aria-hidden": "true", style: { "--um-bar-w": barWidth + "px" } },
           series.map((point, index) => {
-            if (!tickSet.has(index)) return h("span", { key: point.date, className: "um-bars-x-tick" })
+            if (!tickSet.has(index)) return h("span", { key: point.key, className: "um-bars-x-tick" })
             // Edge labels align to the inner side so a ~34px label cannot hang
             // past the panel on either end (the old 10/10 was clipped).
             const edge = index === firstTick ? " um-x-first" : index === lastTick ? " um-x-last" : ""
-            return h("span", { key: point.date, className: "um-bars-x-tick" + edge }, monthDay(point.date))
+            return h("span", { key: point.key, className: "um-bars-x-tick" + edge }, point.label)
           })),
-        h("span", { className: "um-sr" }, metricLabel(metric) + "按日趋势，悬浮或聚焦柱子查看每日数值")) : h("div", { className: "um-empty" }, "当前区间暂无数据"))
+        h("span", { className: "um-sr" }, metricLabel(metric) + (hourly ? "按时趋势，悬浮或聚焦柱子查看每小时数值" : "按日趋势，悬浮或聚焦柱子查看每日数值"))) : h("div", { className: "um-empty" }, "当前区间暂无数据"))
     }
 
     function PricingEditor({ prices, setPrices, saving, onSave }) {
@@ -289,12 +302,12 @@ window.__ModuleLoader__.load({
       const card = (kind, label, value) => h("button", { className: "um-card", type: "button", onClick: () => setDetailKind(kind), "aria-label": `${label}，查看详情` }, h("span", { className: "um-card-label" }, label), h("span", { className: "um-value" }, value));
       return h("div", { className: "um-root" }, h("style", null, css), h("header", { className: "um-head" }, h("div", null, h("div", { className: "um-title" }, "用量统计"), h("div", { className: "um-muted" }, data?.scope ? `${data.scope.start} 至 ${data.scope.end}` : "模型使用、缓存效率与成本概览"), data?.scan?.done === false ? h("div", { className: "um-scan" }, `正在扫描历史会话 ${data.scan.loaded || 0}/${data.scan.total || 0}`) : null), h("div", { className: "um-actions" }, h("button", { className: "um-button", type: "button", onClick: () => void load(false), disabled: state.loading || customDateIncomplete }, state.loading ? "刷新中…" : "刷新"))),
         h("div", { className: "um-content" },
-          h("div", { className: "um-filters" }, selectOptions("供应商", providers, filters.provider, (v) => setFilters((f) => ({ ...f, provider: v, model: "" }))), selectOptions("模型", models, filters.model, (v) => update("model", v), modelLabels), h("div", { className: "um-filter" }, h("span", { className: "um-label" }, "时间范围"), h("select", { className: "um-select", value: filters.days === "" ? "custom" : filters.days, onChange: (e) => setFilters((f) => ({ ...f, days: e.target.value === "custom" ? "" : e.target.value, start: e.target.value === "custom" ? f.start : "", end: e.target.value === "custom" ? f.end : "" })) }, h("option", { value: "7" }, "近 7 天"), h("option", { value: "30" }, "近 30 天"), h("option", { value: "90" }, "近 90 天"), h("option", { value: "custom" }, "自定义区间"))), filters.days === "" ? h("div", { className: "um-filter" }, h("span", { className: "um-label" }, "开始"), h("input", { className: "um-input", type: "date", value: filters.start, "aria-invalid": !filters.start || undefined, onChange: (e) => setFilters((f) => ({ ...f, start: e.target.value, days: "" })) })) : null, filters.days === "" ? h("div", { className: "um-filter" }, h("span", { className: "um-label" }, "结束"), h("input", { className: "um-input", type: "date", value: filters.end, "aria-invalid": !filters.end || undefined, onChange: (e) => setFilters((f) => ({ ...f, end: e.target.value, days: "" })) })) : null),
+          h("div", { className: "um-filters" }, selectOptions("供应商", providers, filters.provider, (v) => setFilters((f) => ({ ...f, provider: v, model: "" }))), selectOptions("模型", models, filters.model, (v) => update("model", v), modelLabels), h("div", { className: "um-filter" }, h("span", { className: "um-label" }, "时间范围"), h("select", { className: "um-select", value: filters.days === "" ? "custom" : filters.days, onChange: (e) => setFilters((f) => ({ ...f, days: e.target.value === "custom" ? "" : e.target.value, start: e.target.value === "custom" ? f.start : "", end: e.target.value === "custom" ? f.end : "" })) }, h("option", { value: "today" }, "今天"), h("option", { value: "7" }, "近 7 天"), h("option", { value: "30" }, "近 30 天"), h("option", { value: "90" }, "近 90 天"), h("option", { value: "all" }, "全部时间"), h("option", { value: "custom" }, "自定义区间"))), filters.days === "" ? h("div", { className: "um-filter" }, h("span", { className: "um-label" }, "开始"), h("input", { className: "um-input", type: "date", value: filters.start, "aria-invalid": !filters.start || undefined, onChange: (e) => setFilters((f) => ({ ...f, start: e.target.value, days: "" })) })) : null, filters.days === "" ? h("div", { className: "um-filter" }, h("span", { className: "um-label" }, "结束"), h("input", { className: "um-input", type: "date", value: filters.end, "aria-invalid": !filters.end || undefined, onChange: (e) => setFilters((f) => ({ ...f, end: e.target.value, days: "" })) })) : null),
           dateValidation ? h("div", { className: "um-validation", role: "status" }, dateValidation) : null,
           state.error && data ? h("div", { className: "um-error", role: "alert" }, state.error) : null,
           state.loading && !data ? h("div", { className: "um-loading", role: "status" }, "正在加载用量统计…") : state.error && !data ? h("div", { className: "um-error", role: "alert" }, h("p", null, state.error), h("button", { className: "um-button", type: "button", onClick: () => void load(true) }, "重试")) : h(React.Fragment, null,
           h("div", { className: "um-metrics" }, card("tokens", "消耗token", compactNum(totals.realTokens)), card("requests", "总请求数", num(totals.calls)), card("cache", "缓存命中率", percentage(totals.hitRate))),
-          h("section", { className: "um-panel", "aria-labelledby": "um-trend-title" }, h("div", { className: "um-chart-head" }, h("div", { className: "um-panel-title", id: "um-trend-title" }, "使用趋势 · 按天"), h("div", { className: "um-segment", role: "group", "aria-label": "趋势指标" }, [["tokens", "Tokens"], ["requests", "请求"]].map(([key, label]) => h("button", { key, type: "button", className: metric === key ? "active" : "", onClick: () => setMetric(key), "aria-pressed": metric === key }, label)))), h(Chart, { days: data?.days, metric, scope: data?.scope })),
+          h("section", { className: "um-panel", "aria-labelledby": "um-trend-title" }, h("div", { className: "um-chart-head" }, h("div", { className: "um-panel-title", id: "um-trend-title" }, data?.granularity === "hour" ? "使用趋势 · 按小时" : "使用趋势 · 按天"), h("div", { className: "um-segment", role: "group", "aria-label": "趋势指标" }, [["tokens", "Tokens"], ["requests", "请求"]].map(([key, label]) => h("button", { key, type: "button", className: metric === key ? "active" : "", onClick: () => setMetric(key), "aria-pressed": metric === key }, label)))), h(Chart, { days: data?.days, hours: data?.hours, granularity: data?.granularity, metric, scope: data?.scope })),
           h("section", { className: "um-panel" }, h("nav", { className: "um-tabs", "aria-label": "用量明细" }, [["requests", "请求"], ["providers", "供应商"], ["models", "模型"], ["pricing", "定价"]].map(([key, label]) => h("button", { key, className: `um-tab${tab === key ? " active" : ""}`, type: "button", onClick: () => setTab(key), "aria-selected": tab === key, role: "tab" }, label))), tab === "pricing" ? h(PricingEditor, { prices: state.prices, setPrices: (prices) => setState((s) => ({ ...s, prices })), saving: state.saving, onSave: savePrices }) : rows?.length ? h("div", { className: "um-table-wrap" }, table) : h("div", { className: "um-empty" }, "当前筛选暂无数据")),
           detailKind ? h(Detail, { kind: detailKind, totals, scope: data?.scope, onClose: () => setDetailKind(null) }) : null)));
     }

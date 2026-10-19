@@ -31,6 +31,7 @@ test('normalizes inverted dates and parses comma-separated filters', () => {
   }), {
     start: '2026-10-01',
     end: '2026-10-09',
+    granularity: 'day',
     providers: ['alpha', 'beta'],
     models: ['model-a', 'model-b'],
   })
@@ -147,4 +148,65 @@ test('allTime falls back to scoped rows when the snapshot lacks totals', () => {
   assert.equal(result.allTime.calls, 1)
   assert.equal(result.allTime.sessions, 1)
   assert.ok(Number.isFinite(result.allTime.earliest))
+})
+
+const localDay = (atMs) => {
+  const d = new Date(atMs)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+test('today and all are named ranges, and all really starts at the oldest record', () => {
+  const today = localDay(Date.now())
+  assert.deepEqual(scopeFromParams({ days: 'today' }), {
+    start: today, end: today, granularity: 'hour', providers: [], models: [],
+  })
+  assert.equal(
+    scopeFromParams({ days: 'all', end: '2026-10-19' }, { earliest: Date.parse('2026-08-01T09:00:00') }).start,
+    '2026-08-01',
+  )
+  // Without the oldest record there is nothing honest to widen to. Collapsing
+  // to today is wrong-looking but true; falling back to the 30-day default
+  // would print a 30-day range under an "all time" label, which is a lie.
+  assert.equal(scopeFromParams({ days: 'all', end: '2026-10-19' }).start, '2026-10-19')
+  // ...and that degenerate one-day range must stay daily, or an empty machine
+  // would render 全部时间 as 24 hourly buckets.
+  assert.equal(scopeFromParams({ days: 'all', end: '2026-10-19' }).granularity, 'day')
+  // A day count still behaves exactly as before.
+  assert.equal(scopeFromParams({ days: '7', end: '2026-10-19' }).start, localDay(Date.now() - 6 * 86400000))
+  // An explicit start outranks the named range.
+  assert.equal(scopeFromParams({ days: 'all', start: '2026-09-01', end: '2026-10-19' }).start, '2026-09-01')
+  // A one-day custom range is a single day, so it gets the hourly view too.
+  assert.equal(scopeFromParams({ start: '2026-10-19', end: '2026-10-19' }).granularity, 'hour')
+})
+
+test('a single-day scope is bucketed by hour and asks the chart for hours', () => {
+  const at = (day, hour) => new Date(`${day}T${String(hour).padStart(2, '0')}:30:00`).getTime()
+  const rows = [
+    { id: 's1:1:1', sessionId: 's1', time: at('2026-10-19', 9), date: '2026-10-19', provider: 'alpha', modelId: 'm', tokens: { input: 10, output: 0, cacheRead: 0, cacheWrite: 0 }, realTokens: 10, hitRate: 0, cost: cost('1'), status: 'complete' },
+    { id: 's1:2:1', sessionId: 's1', time: at('2026-10-19', 9), date: '2026-10-19', provider: 'alpha', modelId: 'm', tokens: { input: 10, output: 0, cacheRead: 0, cacheWrite: 0 }, realTokens: 10, hitRate: 0, cost: cost('1'), status: 'complete' },
+    { id: 's1:3:1', sessionId: 's1', time: at('2026-10-19', 15), date: '2026-10-19', provider: 'alpha', modelId: 'm', tokens: { input: 5, output: 0, cacheRead: 0, cacheWrite: 0 }, realTokens: 5, hitRate: 0, cost: cost('1'), status: 'complete' },
+  ]
+  const scope = { start: '2026-10-19', end: '2026-10-19', providers: [], models: [] }
+  const result = filterSnapshot({ calls: 3, requests: rows }, scope)
+
+  assert.equal(result.granularity, 'hour')
+  // All 24 slots exist, so a silent 03:00 keeps its place on the axis instead
+  // of the bars closing the gap and implying activity there.
+  assert.deepEqual(result.hours.map((slot) => slot.hour), [...Array(24).keys()])
+  assert.deepEqual(result.hours.slice(0, 3).map((slot) => slot.label), ['00:00', '01:00', '02:00'])
+  assert.equal(result.hours[9].calls, 2)
+  assert.equal(result.hours[9].realTokens, 20)
+  assert.equal(result.hours[15].calls, 1)
+  assert.equal(result.hours[0].calls, 0)
+  assert.equal(result.hours[0].realTokens, 0)
+  // Hour buckets carry the same shape a day bucket does, so one chart plots both.
+  for (const key of ['calls', 'tokens', 'realTokens', 'hitRate', 'cost']) {
+    assert.ok(key in result.hours[9], `hour bucket carries ${key}`)
+  }
+  assert.equal(result.hours.reduce((sum, slot) => sum + slot.calls, 0), result.totals.calls)
+
+  // Any wider range stays daily; the client must not be handed stale hours.
+  const wide = filterSnapshot({ calls: 3, requests: rows }, { ...scope, start: '2026-10-18' })
+  assert.equal(wide.granularity, 'day')
+  assert.equal(wide.hours, null)
 })

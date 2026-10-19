@@ -217,3 +217,75 @@ test('long provider and model names clip visually but keep the full value', asyn
   assert.match(source, /return id && id !== label \? `\$\{label\}（\$\{id\}）` : label;/,
     'hover text carries the route id when it differs from the shown name')
 })
+
+// "今天" is one calendar day, so the chart plots 24 hourly buckets; "全部时间"
+// starts at the oldest record the aggregator has seen. The panel must still
+// open on 近 30 天 — a new option is not allowed to change the default view.
+test('the range select offers today and all time in the requested order', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(
+    source,
+    /useState\(\{ days: "30", start: "", end: "", provider: "", model: "" \}\)/,
+    'the panel still opens on 30 days',
+  )
+  const from = source.indexOf('"时间范围"')
+  const to = source.indexOf('"自定义区间"', from)
+  assert.ok(from > 0 && to > from, 'the range select is present')
+  const values = [...source.slice(from, to + 10)
+    .matchAll(/h\("option", \{ value: "([^"]+)" \}, "([^"]+)"\)/g)]
+    .map((match) => [match[1], match[2]])
+  assert.deepEqual(values, [
+    ['today', '今天'],
+    ['7', '近 7 天'],
+    ['30', '近 30 天'],
+    ['90', '近 90 天'],
+    ['all', '全部时间'],
+    ['custom', '自定义区间'],
+  ], '今天 is first, 全部时间 sits between 近 90 天 and 自定义区间')
+})
+
+test('a one-day range is plotted per hour and titled as such', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  assert.match(
+    source,
+    /const hourly = granularity === "hour" && Array\.isArray\(hours\) && hours\.length > 0/,
+    'the chart switches on the granularity the server reported',
+  )
+  assert.match(
+    source,
+    /tickIndexes\(series\.length, barWidth, barGap, hourly\)/,
+    'hourly series get their own tick cadence',
+  )
+  assert.match(
+    source,
+    /data\?\.granularity === "hour" \? "使用趋势 · 按小时" : "使用趋势 · 按天"/,
+    'the panel title follows the granularity',
+  )
+  assert.match(
+    source,
+    /h\(Chart, \{ days: data\?\.days, hours: data\?\.hours, granularity: data\?\.granularity, metric, scope: data\?\.scope \}\)/,
+    'the chart receives the hourly buckets',
+  )
+})
+
+// 24 hourly slots are "HH:00" wide (~34px), exactly like "MM/DD", so they need
+// a cadence of their own: the day cadence would print 7 labels across a single
+// day and 0/7/14/23 would drift. The last slot is still always labelled.
+test('hourly ticks stay legible and keep the final hour', async () => {
+  const source = await readFile(clientPath, 'utf8')
+  const start = source.split('\n').findIndex((line) => line.startsWith('    const tickIndexes = '))
+  assert.ok(start >= 0, 'tickIndexes is present')
+  const lines = source.split('\n')
+  let end = -1
+  for (let i = start + 1; i < lines.length; i++) { if (lines[i] === '    }') { end = i; break } }
+  assert.ok(end > start, 'tickIndexes block closes')
+  const tickIndexes = new Function(lines.slice(start, end + 1).join('\n') + '\nreturn tickIndexes')()
+  const ticks = [...tickIndexes(24, 16, 2, true)].sort((a, b) => a - b)
+  assert.ok(ticks.every((t) => t >= 0 && t < 24), 'hourly ticks stay in range')
+  assert.ok(ticks.includes(23), 'the final hour is labelled')
+  assert.ok(ticks.length >= 4 && ticks.length <= 8, `24 hourly slots want 4-8 labels, got ${ticks.length}`)
+  for (let i = 1; i < ticks.length; i++) {
+    assert.ok((ticks[i] - ticks[i - 1]) * 18 >= 34,
+      `hours ${ticks[i - 1]}/${ticks[i]} would overlap`)
+  }
+})

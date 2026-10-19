@@ -312,3 +312,53 @@ test('the panel stamps when its numbers were captured', async () => {
   assert.match(source, /title: `抓取于 \$\{stampParts\(data\.generatedAt\)\.date\} \$\{stampParts\(data\.generatedAt\)\.time\}`/)
   assert.match(source, /\.um-stamp\{white-space:nowrap/, 'the stamp must not wrap mid-string')
 })
+
+// A pure-CSS bug that no JS test could see: `.um-table th` is (0,1,1) and
+// `.um-num` is (0,1,0), so specificity — not source order — kept the numeric
+// HEADERS left-aligned above right-aligned numbers. 请求 sat 54px to the left of
+// the value it labelled, in both the provider and the model table.
+// "The rule exists" would not catch a regression here, so this resolves the
+// cascade the way a browser does: of every rule matching the element, the
+// highest specificity wins, ties broken by source order.
+test('numeric table headers right-align with the numbers under them', async () => {
+  const source = await readFile(clientPath, 'utf8')
+
+  // Subject of a selector is its last compound, so `.um-table th.um-num`
+  // matches a th and is scored on the whole selector.
+  const specificity = (selector) => [
+    (selector.match(/#[\w-]+/g) || []).length,
+    (selector.match(/\.[\w-]+/g) || []).length,
+    (selector.replace(/[#.][\w-]+/g, '').match(/\b[a-z]+\b/g) || []).length,
+  ]
+  const higher = (a, b) => (a[0] - b[0]) || (a[1] - b[1]) || (a[2] - b[2])
+  const matches = (selector, tag, classes) => selector.split(',').some((part) => {
+    const subject = part.trim().split(/\s+/).pop()
+    // Pseudo-classes and @media preludes are out of scope for this check.
+    if (/[:([@]/.test(subject)) return false
+    const [, name, classList] = /^([a-z]*)((?:\.[\w-]+)*)$/.exec(subject) || []
+    if (name === undefined || (name && name !== tag)) return false
+    return (classList.match(/\.[\w-]+/g) || []).every((c) => classes.includes(c.slice(1)))
+  })
+
+  const rules = [...source.matchAll(/([^{};\n][^{}]*)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }))
+  const declaration = (tag, classes) => {
+    let winner = null
+    rules.forEach((rule, order) => {
+      const value = /text-align:\s*([a-z]+)/.exec(rule.body)
+      if (!value || !matches(rule.selector, tag, classes)) return
+      const score = specificity(rule.selector)
+      if (!winner || higher(score, winner.score) > 0) winner = { value: value[1], selector: rule.selector, score, order }
+    })
+    return winner
+  }
+
+  for (const classes of [['um-num'], ['um-th-sort', 'um-num']]) {
+    const winner = declaration('th', classes)
+    assert.ok(winner, `a th.${classes.join('.')} rule sets text-align`)
+    assert.equal(winner.value, 'right',
+      `th.${classes.join('.')} resolves to ${winner.value} via ${winner.selector} — it must out-rank .um-table th's text-align:left`)
+  }
+  assert.equal(declaration('td', ['um-num']).value, 'right', 'body numbers stay right-aligned')
+  // The time column is a label, not a number, so it must stay left-aligned.
+  assert.equal(declaration('th', ['um-th-sort']).value, 'left', 'the 时间 header stays left-aligned')
+})
